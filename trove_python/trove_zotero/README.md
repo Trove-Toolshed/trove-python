@@ -24,3 +24,5 @@ export.export_list(
 	trove_api=trove_api
 	)
 ```
+
+To get an idea of the results, you can compare [this Trove list](http://trove.nla.gov.au/list?id=50196) to [the collection](https://www.zotero.org/wragge/items/collectionKey/64KM5QZX) I automagically created in my Zotero library.
