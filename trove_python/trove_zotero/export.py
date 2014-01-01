@@ -6,6 +6,7 @@ import copy
 
 from .mappings import TROVE_ZOTERO_MAPPINGS, FIELD_MAPPINGS
 from ..trove_core.utilities import get_url
+from ..trove_harvest.harvest import TroveHarvester
 
 
 def guess_zotero_type(item_type):
@@ -177,4 +178,46 @@ def export_list(list_id, zotero_api, trove_api):
 		#resp = zot.create_items(zotero_items)
 		#zot.addto_collection(collection_key, resp)
 
-				
+class TagExport(TroveHarvester):
+
+	def __init__(self, trove_api, zotero_api):
+		TroveHarvester.__init__(self, trove_api=trove_api)
+		self.zotero_api = zotero_api
+		
+	def process_results(self, zones):
+		"""
+		Do something with each set of results.
+		Needs to update self.harvested
+		"""
+		item_type = None
+		for zone in zones:
+			records = zone['records']
+			if int(records['n']) > 0:
+				if 'work' in records:
+					item_type = 'work'
+				elif 'article' in records:
+					item_type = 'article'
+				if item_type:
+					for item in records[item_type]:
+						details = create_zotero_object(self.zotero_api, self.trove_api, {item_type: item})
+						zotero_item = details['zotero_item']
+						zotero_item['collections'] = [self.collection_key]
+						response = self.zotero_api.create_items([zotero_item])
+						print response
+						if details['attachments']:
+							self.zotero_api.attachment_simple(details['attachments'], response[0]['key'])
+		self.harvested += self.get_highest_n(zones)
+
+	def export_tag(self, tag, start=0, number=20):
+		self.harvested = int(start)
+		self.number = int(number)
+		query_url = 'http://api.trove.nla.gov.au/result?q=publictag:("{}")&zone=all&encoding=json&key={}'
+		self.query = query_url.format(tag, self.trove_api.api_key)
+		collection_name = '{} (Trove tag)'.format(tag)
+		self.collection_key = create_zotero_collection(self.zotero_api, collection_name)
+		if self.collection_key:
+			self.harvest()
+
+
+		
+

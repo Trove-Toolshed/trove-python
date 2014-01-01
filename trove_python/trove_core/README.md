@@ -24,6 +24,8 @@ The item types are:
 * list -- user-created Trove lists
 * contributor -- Trove content partners
 
+##Methods
+
 Once you have an item you can use the associated methods to get useful details out.
 
 ```python
