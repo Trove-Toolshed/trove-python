@@ -10,6 +10,9 @@ from ..trove_harvest.harvest import TroveHarvester
 
 
 def guess_zotero_type(item_type):
+	'''
+	Check mappings to try and find a zotero type.
+	'''
 	if isinstance(item_type, list):
 		item_type = item_type[0]
 	try:
@@ -20,6 +23,9 @@ def guess_zotero_type(item_type):
 
 
 def process_name(name):
+	'''
+	Try and do some cleaning of names that have dates included.
+	'''
 	parts = name.split(',')
 	if len(parts) > 1:
 		family_name = parts[0]
@@ -31,6 +37,9 @@ def process_name(name):
 
 
 def extract_filename_from_url(url):
+	'''
+	Try and get the filename of attachments.
+	'''
 	filename = os.path.basename(urlparse.urlsplit(url).path)
 	if '.' not in filename:
 		filename = None
@@ -38,6 +47,9 @@ def extract_filename_from_url(url):
 
 
 def prepare_attachment(url, default):
+	'''
+	Save a local copy of attachment, and return the local file path.
+	'''
 	response = get_url(url)
 	filename = extract_filename_from_url(url)
 	if not filename:
@@ -57,6 +69,9 @@ def prepare_tags(tags):
 
 
 def create_zotero_object(zotero_api, trove_api, record):
+	'''
+	Process Trove record to populate fields in Zotero item template.
+	'''
 	attachments = []
 	item_type = record.keys()[0]
 	item = record[item_type]
@@ -64,12 +79,10 @@ def create_zotero_object(zotero_api, trove_api, record):
 		zotero_type = guess_zotero_type(item['type'])
 		zotero_template = zotero_api.item_template(zotero_type)
 		template = copy.deepcopy(zotero_template)
-		print template
 		work = trove_api.get_item(item_id=item['id'], item_type='work')
 		details = work.get_details()
 		fields = FIELD_MAPPINGS[zotero_type]
 		for t_field, z_field in fields.items():
-			print t_field
 			if t_field in details:
 				template[z_field] = '; '.join(details[t_field])
 		if 'contributor' in details:
@@ -103,7 +116,6 @@ def create_zotero_object(zotero_api, trove_api, record):
 		pdf_url = work.get_pdf_url()
 		if pdf_url:
 			attachments.append(prepare_attachment(pdf_url, 'article.pdf'))
-		#print template
 		
 	elif item_type == 'people':
 		zotero_type = 'encyclopediaArticle'
@@ -137,16 +149,16 @@ def create_zotero_object(zotero_api, trove_api, record):
 	return {'zotero_item': template, 'attachments': attachments}
 
 
-def create_zotero_collection(zotero_api, list_name):
+def create_zotero_collection(zotero_api, collection_name):
 	'''
 	Creates a Zotero collection with the given name,
 	then retrieves the key for that collection.
 	'''
 	collection_key = None
-	if list_name:
-		created = zotero_api.create_collection({'name': list_name})
+	if collection_name:
+		created = zotero_api.create_collection({'name': collection_name})
 		if created:
-			collections = zotero_api.collections(q=list_name)
+			collections = zotero_api.collections(q=collection_name)
 			try:
 				collection_key = collections[0]['key']
 			except (IndexError, KeyError):
@@ -156,20 +168,68 @@ def create_zotero_collection(zotero_api, list_name):
 	return collection_key
 
 
+def check_duplicate_collection(zotero_api, collection_name):
+	'''
+	Check to see if a collection with the supplied name already exists.
+	'''
+	collections = zotero_api.collections(q=collection_name)
+	if collections:
+		collection_key = collections[0]['key']
+	else:
+		collection_key = None
+	return collection_key
+
+
+def check_duplicate_item(zotero_api, current_item):
+	'''
+	Check to see if a Zotero item with the name and url of the supplied Trove item
+	already exists.
+	'''
+	z_item = None
+	if 'heading' in current_item:
+		title = current_item['heading']
+		url = 'http://nla.gov.au/nla.news-article' + current_item['id']
+	else:
+		try:
+			title = current_item['title']
+			url = current_item['troveUrl']
+		except KeyError:
+			url = current_item['troveUrl']
+			if '/people/' in url:
+				title = 'Trove Party Record'
+			else:
+				title = None
+	if title and url:
+		items = zotero_api.items(q=title)
+		for item in items:
+			if item['url'] == url:
+				z_item = item
+				break
+	return z_item
+
+
 def export_list(list_id, zotero_api, trove_api):
 	#zotero_items = []
 	trove_list = trove_api.get_item(item_id=list_id, item_type='list')
-	list_name = trove_list.get_title()
-	collection_key = create_zotero_collection(zotero_api, list_name)
+	list_name = '{} (Trove list: {})'.format(trove_list.get_title(), list_id)
+	collection_key = check_duplicate_collection(zotero_api, list_name)
+	if not collection_key:
+		collection_key = create_zotero_collection(zotero_api, list_name)
 	if collection_key:
 		for item in trove_list.list_items:
-			details = create_zotero_object(zotero_api, trove_api, item)
-			zotero_item = details['zotero_item']
-			zotero_item['collections'] = [collection_key]
-			response = zotero_api.create_items([zotero_item])
-			print response
-			if details['attachments']:
-				zotero_api.attachment_simple(details['attachments'], response[0]['key'])
+			z_item = check_duplicate_item(zotero_api, item.values()[0])
+			if not z_item:
+				details = create_zotero_object(zotero_api, trove_api, item)
+				zotero_item = details['zotero_item']
+				zotero_item['collections'] = [collection_key]
+				response = zotero_api.create_items([zotero_item])
+				#print response
+				if details['attachments']:
+					zotero_api.attachment_simple(details['attachments'], response[0]['key'])
+				print 'New item added: {}'.format(zotero_item['title'])
+			else:
+				zotero_api.addto_collection(collection_key, [z_item])
+				print 'Item updated: {}'.format(z_item['title'])
 			#zot.addto_collection(collection_key, resp)
 			#zotero_items.append(zotero_item.copy())
 		#Can't get the adding of multiple items to work
@@ -178,7 +238,8 @@ def export_list(list_id, zotero_api, trove_api):
 		#resp = zot.create_items(zotero_items)
 		#zot.addto_collection(collection_key, resp)
 
-class TagExport(TroveHarvester):
+
+class SearchExporter(TroveHarvester):
 
 	def __init__(self, trove_api, zotero_api):
 		TroveHarvester.__init__(self, trove_api=trove_api)
@@ -199,24 +260,46 @@ class TagExport(TroveHarvester):
 					item_type = 'article'
 				if item_type:
 					for item in records[item_type]:
-						details = create_zotero_object(self.zotero_api, self.trove_api, {item_type: item})
-						zotero_item = details['zotero_item']
-						zotero_item['collections'] = [self.collection_key]
-						response = self.zotero_api.create_items([zotero_item])
-						print response
-						if details['attachments']:
-							self.zotero_api.attachment_simple(details['attachments'], response[0]['key'])
+						z_item = check_duplicate_item(self.zotero_api, item)
+						if not z_item:
+							details = create_zotero_object(self.zotero_api, self.trove_api, {item_type: item})
+							zotero_item = details['zotero_item']
+							zotero_item['collections'] = [self.collection_key]
+							response = self.zotero_api.create_items([zotero_item])
+							#print response
+							if details['attachments']:
+								self.zotero_api.attachment_simple(details['attachments'], response[0]['key'])
+							print 'New item added: {}'.format(zotero_item['title'])
+						else:
+							self.zotero_api.addto_collection(self.collection_key, [z_item])
+							print 'Item updated: {}'.format(z_item['title'])
 		self.harvested += self.get_highest_n(zones)
 
-	def export_tag(self, tag, start=0, number=20):
+	def export(self, query, start=0, number=20):
 		self.harvested = int(start)
 		self.number = int(number)
-		query_url = 'http://api.trove.nla.gov.au/result?q=publictag:("{}")&zone=all&encoding=json&key={}'
-		self.query = query_url.format(tag, self.trove_api.api_key)
-		collection_name = '{} (Trove tag)'.format(tag)
-		self.collection_key = create_zotero_collection(self.zotero_api, collection_name)
+		collection_name = self.make_query(query)
+		self.collection_key = check_duplicate_collection(self.zotero_api, collection_name)
+		if not self.collection_key:
+			self.collection_key = create_zotero_collection(self.zotero_api, collection_name)
 		if self.collection_key:
 			self.harvest()
+
+	def make_query(self, query):
+		query_url = 'http://api.trove.nla.gov.au/result?q={}&zone=all&encoding=json&key={}'
+		self.query = query_url.format(query, self.trove_api.api_key)
+		collection_name = '{} (Trove search)'.format(query)
+		return collection_name
+
+
+class TagExporter(SearchExporter):
+
+	def make_query(self, query):
+		query_url = 'http://api.trove.nla.gov.au/result?q=publictag:("{}")&zone=all&encoding=json&key={}'
+		self.query = query_url.format(query, self.trove_api.api_key)
+		collection_name = '{} (Trove tag test)'.format(query)
+		return collection_name
+
 
 
 		
