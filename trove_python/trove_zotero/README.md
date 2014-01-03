@@ -43,4 +43,4 @@ exporter = export.TagExporter(trove_api, zotero_api)
 exporter.export('[Your tag]')
 ```
 
-To see the results compare the Trove items tagged with ['inigo'](http://trove.nla.gov.au/result?q=publictag:(inigo)) to [the corresponding collection](https://www.zotero.org/wragge/items/collectionKey/7JBIBPWF) in Zotero.
+To see the results compare the Trove items tagged with ['inigo'](http://trove.nla.gov.au/result?q=publictag:(inigo) ) to [the corresponding collection](https://www.zotero.org/wragge/items/collectionKey/7JBIBPWF) in Zotero.
