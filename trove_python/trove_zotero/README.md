@@ -26,3 +26,19 @@ export.export_list(
 ```
 
 To get an idea of the results, you can compare [this Trove list](http://trove.nla.gov.au/list?id=50196) to [the collection](https://www.zotero.org/wragge/items/collectionKey/64KM5QZX) I automagically created in my Zotero library.
+
+##Export Trove tags
+
+Exporting Trove tags is similar.
+
+```python
+from pyzotero import zotero
+from trove_python.trove_core import trove
+from trove_python.trove_zotero import export
+
+zotero_api = zotero.Zotero('[Your Zotero user id]', 'user', '[Your Zotero API key]')
+trove_api = trove.Trove(['Your Trove API key'])
+exporter = export.TagExporter(trove_api, zotero_api)
+
+exporter.export('[Your tag]')
+```
