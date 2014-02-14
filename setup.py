@@ -7,5 +7,5 @@ setup(name='trove_python',
       author='Tim Sherratt',
       author_email='tim@discontents.com.au',
       license='MIT',
-      packages=['trove_python'],
+      packages=['trove_python', 'trove_python.trove_core', 'trove_python.trove_zotero', 'trove_python.trove_harvest'],
       zip_safe=False)
