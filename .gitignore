@@ -1,3 +1,4 @@
 *.pyc
 trove_python.egg-info
 trove_python/examples/credentials.py
+.DS_Store
