@@ -1,7 +1,12 @@
 import re
 import json
-from urllib2 import urlopen, Request, HTTPError
-from utilities import retry
+try:
+    from urllib.request import urlopen, Request
+    from urllib.error import HTTPError
+except ImportError:
+    from urllib2 import urlopen, Request, HTTPError
+from .utilities import retry
+import codecs
 
 
 class ServerError(Exception):
@@ -20,7 +25,7 @@ class TroveHarvester:
     query = None
     harvested = 0
     number = 20
-    maximum = 1
+    maximum = 0
 
     def __init__(self, trove_api, **kwargs):
         self.trove_api = trove_api
@@ -29,6 +34,13 @@ class TroveHarvester:
             self.query = self._clean_query(query)
         self.harvested = int(kwargs.get('start', 0))
         self.number = int(kwargs.get('number', 20))
+        maximum = kwargs.get('max')
+        if maximum:
+            self.maximum = int(maximum)
+            self.max_set = True
+        else:
+            self.maximum = self.harvested + 1
+            self.max_set = False
 
     def _clean_query(self, query):
         """Remove s and n values just in case."""
@@ -47,7 +59,7 @@ class TroveHarvester:
         try:
             response = urlopen(req)
         except HTTPError as e:
-            if e.code == 503 or e.code == 504:
+            if e.code == 503 or e.code == 504 or e.code == 500:
                 raise ServerError("The server didn't respond")
             else:
                 raise
@@ -55,30 +67,30 @@ class TroveHarvester:
             return response
 
     def harvest(self):
-        print self.maximum
         number = self.number
         query_url = '{}&n={}&key={}'.format(
-                self.query,
-                self.number,
-                self.trove_api.api_key
-                )
-        while number == self.number and self.harvested < self.maximum:
+            self.query,
+            self.number,
+            self.trove_api.api_key
+        )
+        while (number == self.number) and (self.harvested < self.maximum):
             current_url = '{}&s={}'.format(
                 query_url,
                 self.harvested
-                )
-            print current_url
+            )
+            print(current_url)
             response = self._get_url(current_url)
             try:
-                results = json.load(response)
+                reader = codecs.getreader('utf-8')  # For Python 3
+                results = json.load(reader(response))
             except (AttributeError, ValueError):
-                pass
                 # Log errors?
+                pass
             else:
                 zones = results['response']['zone']
                 self.process_results(zones)
                 number = self.get_highest_n(zones)
-                if self.maximum == 1:
+                if not self.max_set:
                     self.maximum = self.get_highest_total(zones)
 
     def get_highest_n(self, zones):
